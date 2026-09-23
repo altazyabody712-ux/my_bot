@@ -71,11 +71,36 @@ def get_local_ip():
         return "127.0.0.1"
 
 def get_public_url():
-    """يرجع الرابط العام (Tunnel)"""
+    """يرجع الرابط العام — يدعم Render / Koyeb / Railway / Fly / Tunnel"""
     global TUNNEL_URL
     if TUNNEL_URL:
         return TUNNEL_URL
-    # من DB
+
+    # ✅ Render
+    render_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if render_url:
+        TUNNEL_URL = render_url.rstrip("/")
+        return TUNNEL_URL
+
+    # ✅ Koyeb
+    koyeb = os.environ.get("KOYEB_PUBLIC_DOMAIN")
+    if koyeb:
+        TUNNEL_URL = f"https://{koyeb}"
+        return TUNNEL_URL
+
+    # ✅ Railway
+    railway = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+    if railway:
+        TUNNEL_URL = f"https://{railway}"
+        return TUNNEL_URL
+
+    # ✅ Fly.io
+    fly = os.environ.get("FLY_APP_NAME")
+    if fly:
+        TUNNEL_URL = f"https://{fly}.fly.dev"
+        return TUNNEL_URL
+
+    # من DB (Tunnel سابق)
     try:
         conn = _conn(); c = conn.cursor()
         c.execute("SELECT value FROM ui_settings WHERE key='public_url'")
@@ -84,11 +109,13 @@ def get_public_url():
             TUNNEL_URL = r[0]
             return r[0]
     except: pass
-    # من env
+
+    # من env عام
     env_url = os.environ.get("PUBLIC_URL")
     if env_url:
         return env_url.rstrip("/")
-    # fallback: الرابط المحلي
+
+    # fallback محلي
     port = int(os.environ.get("PORT", 8080))
     return f"http://{get_local_ip()}:{port}"
 
@@ -1810,7 +1837,15 @@ if __name__ == "__main__":
     print("🚀 HOST BOT v10.0 — STARTING")
     print("=" * 55)
 
-    # 1) Heartbeat (حل Restart Loop)
+    # ✅ هل إحنا على منصة سحابية؟ (Render / Koyeb / Railway)
+    on_cloud = any([
+        os.environ.get("RENDER_EXTERNAL_URL"),
+        os.environ.get("KOYEB_PUBLIC_DOMAIN"),
+        os.environ.get("RAILWAY_PUBLIC_DOMAIN"),
+        os.environ.get("FLY_APP_NAME"),
+    ])
+
+    # 1) Heartbeat
     threading.Thread(target=keep_alive, daemon=True).start()
     print("[*] Heartbeat started ✅")
 
@@ -1818,12 +1853,15 @@ if __name__ == "__main__":
     threading.Thread(target=run_bot, daemon=True).start()
     print("[*] Bot thread started ✅")
 
-    # 3) Tunnel (بعد 5 ثواني عشان Flask يبدأ)
-    def delayed_tunnel():
-        time.sleep(5)
-        start_tunnel()
-    threading.Thread(target=delayed_tunnel, daemon=True).start()
-    print("[*] Tunnel thread started ✅")
+    # 3) Tunnel — بس لو إحنا مش على منصة سحابية
+    if not on_cloud:
+        def delayed_tunnel():
+            time.sleep(5)
+            start_tunnel()
+        threading.Thread(target=delayed_tunnel, daemon=True).start()
+        print("[*] Tunnel thread started ✅ (local mode)")
+    else:
+        print(f"[*] Cloud mode — الرابط: {get_public_url()}")
 
     # 4) Flask (رئيسي)
     run_web()
