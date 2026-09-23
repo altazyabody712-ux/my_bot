@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+host_v10.db
+hosted_projects/
+*.log
